@@ -3,16 +3,17 @@ import datetime
 from yunbi.yunbi_data.yunbi_datafeed_lib import MinuteLine
 
 MINUTE = 1
+BEGIN_TIME_0705 = 1499246670
 BEGIN_TIMESTAMP = 1494433206
-out_file_path = "yunbi_btccny_minute.csv"
+out_file_path = "yunbi_ethcny_minute.csv"
 # data_files = ['yunbi_zeccny_28083872_30098613.csv', 'yunbi_zeccny_30098921_32303965.csv']
 # data_files = ['yunbi_anscny_28048769_30874950.csv']
 # data_files = ['yunbi_ethcny_27864118_29496077.csv', 'yunbi_ethcny_29496085_30098752.csv', 'yunbi_ethcny_30098777_30874954.csv']
 # data_files = ['yunbi_btscny_4140067_29501435.csv', 'yunbi_btscny_29501464_30098751.csv', 'yunbi_btscny_30098756_30764671.csv']
 # data_files = ['yunbi_etccny_24191032_29579858.csv', 'yunbi_etccny_29579922_32297029.csv']
 # data_files = ['yunbi_gntcny_27407319_32296885.csv', ]
-# data_files = ['yunbi_ethcny_25497371_33295710.csv', 'yunbi_ethcny_33295760_34720940.csv', 'yunbi_ethcny_34721063_38444267.csv']
-data_files = ['yunbi_btccny_25497352_33295496.csv', 'yunbi_btccny_33295813_38444283.csv']
+data_files = ['yunbi_ethcny_25497371_33295710.csv', 'yunbi_ethcny_33295760_34720940.csv', 'yunbi_ethcny_34721063_38444267.csv']
+# data_files = ['yunbi_btccny_25497352_33295496.csv', 'yunbi_btccny_33295813_38444283.csv', 'yunbi_btccny_38444311_43080754.csv']
 df = None
 for data_file in data_files:
     if df is None:

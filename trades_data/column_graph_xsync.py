@@ -7,6 +7,9 @@ import datetime
 import bppl
 from sklearn.linear_model import LinearRegression
 
+INPUT_FILE = 'yunbi_ethcny_minute.csv'
+OUTPUT_FILE = 'eth_trend.csv'
+
 
 def randcolor():
     de = ("%02x" % random.randint(50, 255))
@@ -286,7 +289,7 @@ def linear_reg(price, sigma, old_y_t=None, alpha=800):
 
 
 # eth_df = get_data('yunbi_ethcny_minute.csv')[42000:72000]
-eth_df = get_data('yunbi_btccny_minute.csv')[5000:].copy(deep=True)
+eth_df = get_data(INPUT_FILE)[5000:].copy(deep=True)
 eth_df.index = range(len(eth_df))
 
 
@@ -318,16 +321,17 @@ from enum import Enum
 
 
 class Signal(object):
-    break_buy = 9
-    trend_buy = 2
+    break_buy = 3
+    trend_buy = 1
     none = 0
-    trend_sell = -2
-    break_sell = -9
+    trend_sell = -1
+    break_sell = -3
 
 
-def gen_signal(ema, short_trend, long_trend, band, delta, offset, sigma_avg):
+def gen_signal(ema, short_trend, long_trend, band, delta, offset, sigma_avg, long_volume, short_volume):
     max_pos = 0.015 / sigma_avg
     max_pos = 1 if max_pos > 1 else max_pos
+    max_pos *= long_volume * 0.02
     std_delta = delta / band
     bar = 0.5
     pos_band = 1 * band
@@ -338,18 +342,18 @@ def gen_signal(ema, short_trend, long_trend, band, delta, offset, sigma_avg):
     # if ema > min(long_trend + short_trend, short_trend) + band
     if std_delta > -neg_bar:
         if ema > short_trend + pos_band:
-            return Signal.break_buy, max_pos
+            return int(Signal.break_buy) * short_volume * 0.1, max_pos
     else:
-        if ema > short_trend + 0.85 * pos_band:
-            return Signal.break_buy, 0
+        if ema > short_trend + 1 * pos_band:
+            return int(Signal.break_buy) * short_volume * 0.1, 0
 
     # if ema < max(long_trend - short_trend, short_trend) - band
     if std_delta < pos_bar:
         if ema < short_trend - neg_band:
-            return Signal.break_sell, -max_pos
+            return int(Signal.break_sell) * short_volume * 0.1, -max_pos
     else:
-        if ema < short_trend - 1.02 * neg_band:
-            return Signal.break_sell, 0
+        if ema < short_trend - 1 * neg_band:
+            return int(Signal.break_sell) * short_volume * 0.1, 0
     """
     if std_delta > pos_bar and offset > 0.3:
         return Signal.break_buy, 1
@@ -362,13 +366,13 @@ def gen_signal(ema, short_trend, long_trend, band, delta, offset, sigma_avg):
         return Signal.break_sell, 0
     """
     if std_delta > pos_bar and offset > 0.3:
-        return Signal.break_buy, max_pos
+        return int(Signal.break_buy) * short_volume * 0.1, max_pos
     if std_delta < -neg_bar and offset < -0.3:
-        return Signal.break_sell, -max_pos
+        return int(Signal.break_sell) * short_volume * 0.1, -max_pos
     if std_delta > pos_bar and offset > 0:
-        return Signal.trend_buy, max_pos
+        return int(Signal.trend_buy) * short_volume * 0.1, max_pos
     if std_delta < -neg_bar and offset < 0:
-        return Signal.trend_sell, -max_pos
+        return int(Signal.trend_sell) * short_volume * 0.1, -max_pos
     """
     if 0.4 * std_delta + 0.6 * offset > 0.5 * pos_bar:
         return Signal.trend_buy, 0
@@ -390,6 +394,9 @@ profit = 0.0
 profit_money = 0
 residues_ema = EMA(10)
 sigma_ema = EMA(200)
+long_volume_ema = EMA(6 * 24 * 4)
+short_volume_ema = EMA(10)
+
 window_len = 60 * 36
 for i in range(window_len, len(eth_df), 10):
     row = eth_df.loc[i]
@@ -404,6 +411,8 @@ for i in range(window_len, len(eth_df), 10):
     delta.append(y_t - y_0)
     band = 1.2 * float(row.sigma_avg) + 0.01
     sigma_ema.put(row.sigma_avg)
+    long_volume_ema.put(row.volume)
+    short_volume_ema.put(row.volume)
     signal_df["long_trend_y"].append(float(long_trend_y))
     signal_df["upper"].append(float(y_t + band))
     signal_df["lower"].append(float(y_t - band))
@@ -421,17 +430,18 @@ for i in range(window_len, len(eth_df), 10):
 
     signal_df["trend_offset"].append(residues_ema.get() / residue_sigma)
 
-    (buy_sell_signal, target) = gen_signal(signal_df["ema"][-1], pred_y[-1], long_trend_y, signal_df["band"][-1],
+    (trade_rate, target) = gen_signal(signal_df["ema"][-1], pred_y[-1], long_trend_y, signal_df["band"][-1],
                                            float(y_t - y_0), signal_df["trend_offset"][-1],
-                                           0.5 * sigma_ema.get() + 0.5 * row.sigma_avg)
+                                           0.5 * sigma_ema.get() + 0.5 * row.sigma_avg, long_volume_ema.get() * 60 * 24,
+                                      short_volume_ema.get() * 10)
     signal_df["signal"].append(target)
 
     delta_position = 0
 
-    if cur_position < target and int(buy_sell_signal) > 0:
-        delta_position = min(0.05 * int(buy_sell_signal), target - cur_position)
-    elif cur_position > target and int(buy_sell_signal) < 0:
-        delta_position = max(0.05 * int(buy_sell_signal), target - cur_position)
+    if cur_position < target and trade_rate > 0:
+        delta_position = min(trade_rate, target - cur_position)
+    elif cur_position > target and trade_rate < 0:
+        delta_position = max(trade_rate, target - cur_position)
 
     if abs(delta_position) > abs(cur_position) and delta_position * cur_position < 0:
         delta_position = -cur_position
@@ -441,7 +451,7 @@ for i in range(window_len, len(eth_df), 10):
             avg_price = (avg_price * cur_position + signal_df["price"][-1] * delta_position) / (
                 delta_position + cur_position)
         else:
-            profit += (avg_price - signal_df["price"][-1]) / avg_price * delta_position
+            profit += (avg_price - signal_df["price"][-1]) / avg_price * delta_position / 2000
             profit_money += (avg_price - signal_df["price"][-1]) * delta_position
     cur_position += delta_position
     float_profit = (signal_df["price"][-1] - avg_price) / avg_price * cur_position if avg_price > 0 else 0
@@ -518,7 +528,7 @@ def performance_output():
     res_df['turnover'] = signal_df['turnover'].groupby(signal_df['date']).sum()
     res_df['return'] = res_df['return'].diff()
     print res_df
-    res_df.to_csv('btc_trend.csv')
+    res_df.to_csv(OUTPUT_FILE)
 
 
 performance_output()
